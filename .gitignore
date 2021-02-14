@@ -1,6 +1,18 @@
+# Pregen CUDA ignores
 *.i
 *.ii
 *.gpu
 *.ptx
 *.cubin
 *.fatbin
+
+# I added these
+*.exp
+*.lib
+*.exe
+
+# Don't upload images
+*.png
+
+# Don't upload the data I generate
+*.data
