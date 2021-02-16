@@ -5,7 +5,7 @@
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/add_cuda.exe",
+            "program": "${workspaceFolder}/mc_integrate_sequence/mc_integrator.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
