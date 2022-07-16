@@ -1,0 +1,178 @@
+########################################################################################
+# 
+# C++ automatic dependency calculation and source file search
+# Only works on Mac and Linux
+# Author: Lars
+#
+########################################################################################
+
+TARGET_EXEC := main
+
+LOCAL_SRC_DIRS := src
+EXT_SRC_DIRS := 
+SRC_DIRS := $(LOCAL_SRC_DIRS) $(EXT_SRC_DIRS)
+BUILD_DIR := bin
+
+VPATH := $(SRC_DIRS)
+
+LOCAL_INC_DIRS := include
+EXT_INC_DIRS := 
+INC_DIRS := $(LOCAL_INC_DIRS) $(EXT_INC_DIRS)
+INC_FLAGS := $(addprefix -I,$(INC_DIRS))
+INC_FLAGS += -I /usr/local/cuda/include
+
+LIB_DIRS := 
+LINK_FLAGS := $(addprefix -L , $(LIB_DIRS))
+LINK_FLAGS += -dlto -L /usr/local/cuda/lib64
+
+WARNING_FLAGS := -Wall -Wextra -Wno-unused-parameter -Wdouble-promotion -Werror
+CXX_COMPILE_FLAGS := $(WARNING_FLAGS) -std=c++17 $(INC_FLAGS) -MMD -MP
+CXX_COMPILER := g++
+
+CUDA_COMPILE_FLAGS := $(INC_FLAGS) -MMD -MP
+CUDA_COMPILER := nvcc
+
+# Don't use -Ofast because it turns on -ffast-math and we don't want that for the compensated summation
+CXX_REL_FLAGS := -O0
+CUDA_REL_FLAGS := -dlto -O0 -ftz=true
+
+########################################################################################
+
+# Colors:
+# https://stackoverflow.com/a/28938235
+
+# No Color (Reset)
+NC = \033[0m
+
+# Regular Colors
+BLACK = \033[0;30m
+RED = \033[0;31m
+GREEN = \033[0;32m
+YELLOW = \033[0;33m
+BLUE = \033[0;34m
+PURPLE = \033[0;35m
+CYAN = \033[0;36m
+WHITE = \033[0;37m
+
+# Bold
+BBLACK = \033[1;30m
+BRED = \033[1;31m
+BGREEN = \033[1;32m
+BYELLOW = \033[1;33m
+BBLUE = \033[1;34m
+BPURPLE = \033[1;35m
+BCYAN = \033[1;36m
+BWHITE = \033[1;37m
+
+# Underline
+UBLACK = \033[4;30m
+URED = \033[4;31m
+UGREEN = \033[4;32m
+UYELLOW = \033[4;33m
+UBLUE = \033[4;34m
+UPURPLE = \033[4;35m
+UCYAN = \033[4;36m
+UWHITE = \033[4;37m
+
+# Background
+ONBLACK = \033[40m
+ONRED = \033[41m
+ONGREEN = \033[42m
+ONYELLOW = \033[43m
+ONBLUE = \033[44m
+ONPURPLE = \033[45m
+ONCYAN = \033[46m
+ONWHITE = \033[47m
+
+########################################################################################
+
+SHELL := /bin/bash
+
+RM = rm -r $(1)
+MKDIR_P = mkdir -p $(1)
+
+# Find sources
+CXX_SRCS := $(shell find $(SRC_DIRS) -name "*.cpp")
+CXX_SRCS += $(shell find $(SRC_DIRS) -name "*.c")
+CUDA_SRCS := $(shell find $(SRC_DIRS) -name "*.cu")
+
+# Find all objects to be compiled by C++ compiler
+CXX_OBJS := $(CXX_SRCS:%.cpp=%.o)
+CXX_OBJS := $(CXX_OBJS:%.c=%.o)
+
+# Find all objects to be compiled by CUDA compiler
+CUDA_OBJS := $(CUDA_SRCS:%.cu=%.o)
+
+#
+# Release build settings
+#
+REL_DIR := $(BUILD_DIR)/release
+REL_EXE := $(REL_DIR)/$(TARGET_EXEC)
+CXX_REL_OBJS = $(addprefix $(REL_DIR)/objs/cxx/, $(CXX_OBJS))
+CUDA_REL_OBJS = $(addprefix $(REL_DIR)/objs/cuda/, $(CUDA_OBJS))
+CXX_REL_DEPS = $(CXX_REL_OBJS:.o=.d)
+CUDA_REL_DEPS = $(CUDA_REL_OBJS:.o=.d)
+
+.PHONY: all test clean prep release remake
+
+# Default build
+all:
+	$(MAKE) prep
+	$(MAKE) release
+
+#
+# Release rules
+#
+release: $(REL_EXE)
+
+$(REL_EXE): $(CXX_REL_OBJS) $(CUDA_REL_OBJS)
+	@printf "${BPURPLE}Linking final executable:${BWHITE} $@${NC}\n"
+	$(CUDA_COMPILER) -o $(REL_EXE) $^ $(LINK_FLAGS)
+	@printf "${BPURPLE}Linking complete:${BWHITE} $@${NC}\n"
+
+$(REL_DIR)/objs/cuda/%.o: %.cu
+	$(call MKDIR_P, $(dir $@))
+	@printf "${BGREEN}Compiling object:${BWHITE} $@${NC}\n"
+	$(CUDA_COMPILER) -dc -o $@ $< $(CUDA_COMPILE_FLAGS) $(CUDA_REL_FLAGS)
+	@printf "${BGREEN}Compilation complete:${BWHITE} $@${NC}\n"
+
+$(REL_DIR)/objs/cxx/%.o: %.cpp
+	$(call MKDIR_P, $(dir $@))
+	@printf "${BCYAN}Compiling object:${BWHITE} $@${NC}\n"
+	$(CXX_COMPILER) -c -o $@ $< $(CXX_COMPILE_FLAGS) $(CXX_REL_FLAGS)
+	@printf "${BCYAN}Compilation complete:${BWHITE} $@${NC}\n"
+
+$(REL_DIR)/objs/cxx/%.o: %.c
+	$(call MKDIR_P, $(dir $@))
+	@printf "${BCYAN}Compiling object:${BWHITE} $@${NC}\n"
+	$(CXX_COMPILER) -c -o $@ $< $(CXX_COMPILE_FLAGS) $(CXX_REL_FLAGS)
+	@printf "${BCYAN}Compilation complete:${BWHITE} $@${NC}\n"
+
+
+#
+# Other rules
+#
+prep:
+	$(call MKDIR_P, $(REL_DIR))
+
+# Do it like this for parallel compilation to work
+remake: 
+	$(MAKE) clean
+	$(MAKE) all
+
+clean:
+	@printf "${BRED}Deleting build directory${NC}\n"
+	$(call RM, $(BUILD_DIR))
+
+test:
+	@printf "\n"
+	@printf "${BPURPLE}C++ Sources:${NC} $(CXX_SRCS)\n\n"
+	@printf "${BPURPLE}CUDA Sources:${NC} $(CUDA_SRCS)\n\n"
+
+# not quite happy with this solution to deal with dependencies. It just kinda suppresses warnings - Lars
+-include $(CXX_REL_DEPS)
+-include $(CUDA_REL_DEPS)
+
+# Sources
+# https://stackoverflow.com/questions/2394609/makefile-header-dependencies
+# https://stackoverflow.com/questions/1079832/how-can-i-configure-my-makefile-for-debug-and-release-builds
