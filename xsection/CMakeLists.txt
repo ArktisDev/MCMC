@@ -1,6 +1,6 @@
 #----------------------------------------------------------------------------
 # Setup the project
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 project(MCMC)
 
 enable_language(CUDA)
@@ -8,8 +8,10 @@ enable_language(CUDA)
 #----------------------------------------------------------------------------
 # Set the appropriate compile options
 #
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
 SET(CMAKE_CXX_FLAGS -Wall -O3)
-SET(CMAKE_CUDA_FLAGS -O3)
+SET(CMAKE_CUDA_FLAGS "-O3 --expt-relaxed-constexpr")
 
 #----------------------------------------------------------------------------
 # Locate sources and headers for this project

@@ -1,18 +1,26 @@
 #include "common.cuh"
 #include "statistics.cuh"
 #include "timing.hpp"
+#include "EnumerateArray.hpp"
 #include "metropolis.cuh"
 #include "integrate.cuh"
 
 #include <iostream>
 
-constexpr PDF pdflist[] = {pdf};
+// This define for expanding the pdflist in variadic template
+#define pdflist pdf
+// In the future it might be useful to include a dummy header for compiling
+// where the content of the dummy header is just the define for pdflist.
+// That way, an external script can modify the dummy header for the specific
+// situation to be compiled, then run the compiler. This makes it so we don't
+// have to mess around passing the defines via command line, which is somewhat
+// difficult and easy to mess up. 
 
 int main() {
-    const int nNeutronA = 1;
-    const int nProtonA = 0;
-    const int nNeutronB = 0;
-    const int nProtonB = 0;
+    const int nNeutronA = 6;
+    const int nProtonA = 6;
+    const int nNeutronB = 6;
+    const int nProtonB = 6;
     
     const int nNucleonA = nNeutronA + nProtonA;
     const int nNucleonB = nNeutronB + nProtonB;
@@ -125,7 +133,7 @@ int main() {
     // we'd even randomize the initial states of the chain
     // This can be done by treating it as a discrete pdf, and sampling according to that (lars can do that btw lol)
     // Probably it isn't worth it though since we can just mix the chain "enough"
-    WarmupMetropolis<nNucleons, totalThreads, pdflist[0]><<<blocks, threads>>>(d_prevSample, 2.2f, d_randState, samplesForMix);
+    WarmupMetropolis<nNucleons, totalThreads, pdflist><<<blocks, threads>>>(d_prevSample, 2.2f, d_randState, samplesForMix);
     cudaCheckError();
     cudaDeviceSynchronize();
     cudaCheckError();
