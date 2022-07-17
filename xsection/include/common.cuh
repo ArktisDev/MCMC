@@ -13,6 +13,8 @@
 
 #include <stdio.h>
 
+typedef float (*PDF)(float);
+
 #define cudaCheckError() { \
   cudaError_t err = cudaGetLastError(); \
   if(err != cudaSuccess) { \

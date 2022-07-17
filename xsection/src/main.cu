@@ -6,7 +6,18 @@
 
 #include <iostream>
 
-int main() {    
+constexpr PDF pdflist[] = {pdf};
+
+int main() {
+    const int nNeutronA = 1;
+    const int nProtonA = 0;
+    const int nNeutronB = 0;
+    const int nProtonB = 0;
+    
+    const int nNucleonA = nNeutronA + nProtonA;
+    const int nNucleonB = nNeutronB + nProtonB;
+    const int nNucleons = nNucleonA + nNucleonB;
+    
     // For 1 simulation kernel
     const int totalBlocks = 1 << 12; // 4096
     const int threadsPerBlock = 1 << 7;    // 128, don't go below this per block (empirical)
@@ -19,6 +30,13 @@ int main() {
     // seed for CUDA RNG
     const uint64_t seed = std::chrono::steady_clock::now().time_since_epoch().count();
     //const uint64_t seed = 8 * 2474033889142906;
+    
+    
+    
+    
+    
+    
+    
     
     // If you know the actual result for comparison
     //const float actualResult = 6.424247445544025f;
@@ -38,29 +56,31 @@ int main() {
     
     dim3 blocks(totalBlocks);
     dim3 threads(threadsPerBlock);
+
+
+
+
     
+    // Start of initialization
     
-    
-    
-    // Intialize things
+    // A very basic class to do timing
     Timer timer;
     
+    // Keep track of random state and data for metropolis hastings
+    // Rather than recalculate 1 / pdf(r_prev), just store it between kernel invocations
     curandStateXORWOW *d_randState;
     float *d_prevSample;
-    float *d_invPrevPDF;
     
     cudaMalloc((void **)&d_randState, totalThreads * sizeof(curandStateXORWOW));
     cudaCheckError();
     
-    cudaMalloc((void **)&d_prevSample, totalThreads * sizeof(float));
+    cudaMalloc((void **)&d_prevSample, nNucleons * totalThreads * sizeof(float));
     cudaCheckError();
     
-    cudaMalloc((void **)&d_invPrevPDF, totalThreads * sizeof(float));
-    cudaCheckError();
-    
+    // Init arrays
     RandStateInit<<<blocks, threads>>>(d_randState, seed);
     cudaCheckError();
-    MetropolisInit<pdf><<<blocks, threads>>>(d_prevSample, d_invPrevPDF, 1.0f);
+    InitSampleArray<<<blocks, threads>>>(d_prevSample, 1.0f, nNucleons, totalThreads);
     cudaCheckError();
     
     cudaDeviceSynchronize();
@@ -104,7 +124,8 @@ int main() {
     // This is an important step, and if we were doing this a little bit better
     // we'd even randomize the initial states of the chain
     // This can be done by treating it as a discrete pdf, and sampling according to that (lars can do that btw lol)
-    WarmupMetropolis<pdf><<<blocks, threads>>>(d_prevSample, d_invPrevPDF, 2.0f, d_randState, samplesForMix);
+    // Probably it isn't worth it though since we can just mix the chain "enough"
+    WarmupMetropolis<nNucleons, totalThreads, pdflist[0]><<<blocks, threads>>>(d_prevSample, 2.2f, d_randState, samplesForMix);
     cudaCheckError();
     cudaDeviceSynchronize();
     cudaCheckError();
@@ -114,69 +135,69 @@ int main() {
     // Setup done, now run the integration
     timer.start();
     
-    // Launch the first run
-    MCIntegrate<<<blocks, threads, 0, computeStream>>>(d_prevSample, d_invPrevPDF, d_randState, d_resultBuffer1, samplesPerThread);
-    cudaCheckError();
-    cudaEventRecord(batches[0], computeStream);
-    cudaCheckError();
+    // // Launch the first run
+    // MCIntegrate<<<blocks, threads, 0, computeStream>>>(d_prevSample, d_invPrevPDF, d_randState, d_resultBuffer1, samplesPerThread);
+    // cudaCheckError();
+    // cudaEventRecord(batches[0], computeStream);
+    // cudaCheckError();
     
-    for (int run = 1; run < totalRuns; run++) {
-        // Launch a new run
-        MCIntegrate<<<blocks, threads, 0, computeStream>>>(d_prevSample, d_invPrevPDF, d_randState, d_resultBuffers[run % 2], samplesPerThread);
-        cudaCheckError();
-        cudaEventRecord(batches[run % 2], computeStream);
-        cudaCheckError();
+    // for (int run = 1; run < totalRuns; run++) {
+    //     // Launch a new run
+    //     MCIntegrate<<<blocks, threads, 0, computeStream>>>(d_prevSample, d_invPrevPDF, d_randState, d_resultBuffers[run % 2], samplesPerThread);
+    //     cudaCheckError();
+    //     cudaEventRecord(batches[run % 2], computeStream);
+    //     cudaCheckError();
         
-        // Wait on previous kernel to finish
-        cudaEventSynchronize(batches[(run + 1) % 2]);
-        cudaCheckError();
+    //     // Wait on previous kernel to finish
+    //     cudaEventSynchronize(batches[(run + 1) % 2]);
+    //     cudaCheckError();
         
-        // Process data from that event
-        cudaMemcpyAsync(h_resultBuffers[(run - 1) % 2], d_resultBuffers[(run - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
-        cudaCheckError();
-        cudaStreamSynchronize(dataStream);
-        cudaCheckError();
+    //     // Process data from that event
+    //     cudaMemcpyAsync(h_resultBuffers[(run - 1) % 2], d_resultBuffers[(run - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
+    //     cudaCheckError();
+    //     cudaStreamSynchronize(dataStream);
+    //     cudaCheckError();
         
-        runAverages[run - 1] = Average(h_resultBuffers[(run - 1) % 2], totalThreads);
+    //     runAverages[run - 1] = Average(h_resultBuffers[(run - 1) % 2], totalThreads);
         
-        // when done processing, just let loop again and enqueue another kernel, or let exit because we've enqueued enough kernels
-    }
+    //     // when done processing, just let loop again and enqueue another kernel, or let exit because we've enqueued enough kernels
+    // }
     
-    // when exiting the loop, there is still one running kernel, with id run = totalRuns - 1.
-    cudaEventSynchronize(batches[(totalRuns - 1) % 2]);
-    cudaCheckError();
+    // // when exiting the loop, there is still one running kernel, with id run = totalRuns - 1.
+    // cudaEventSynchronize(batches[(totalRuns - 1) % 2]);
+    // cudaCheckError();
     
-    // process the data from that event
-    cudaMemcpyAsync(h_resultBuffers[(totalRuns - 1) % 2], d_resultBuffers[(totalRuns - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
-    cudaCheckError();
-    cudaStreamSynchronize(dataStream);
-    cudaCheckError();
+    // // process the data from that event
+    // cudaMemcpyAsync(h_resultBuffers[(totalRuns - 1) % 2], d_resultBuffers[(totalRuns - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
+    // cudaCheckError();
+    // cudaStreamSynchronize(dataStream);
+    // cudaCheckError();
     
-    runAverages[totalRuns - 1] = Average(h_resultBuffers[(totalRuns - 1) % 2], totalThreads);
+    // runAverages[totalRuns - 1] = Average(h_resultBuffers[(totalRuns - 1) % 2], totalThreads);
     
-    int64_t elapsedTime = timer.elapsedMilli();
-    
-    
-    
-    
-    // Statistics
-    
-    
-    float finalAverage = Average(runAverages, totalRuns);
-    float finalVariance = Variance(runAverages, finalAverage, totalRuns);
-    std::cout << "Final average: " << finalAverage << std::endl;
-    std::cout << "Final variance: " << finalVariance << std::endl;
-    std::cout << "Final stdev: " << sqrt(finalVariance) << std::endl;
-    std::cout << "Final stderr: " << sqrt(finalVariance / totalRuns) << std::endl;
-    std::cout << "Actual Error: " << finalAverage - actualResult << std::endl;
-    
-    
-    std::cout << "Elapsed time: " << elapsedTime / 1000.0 << "s" << std::endl;
-    std::cout << "Samples/s: " << totalSamples / elapsedTime / 1e6 << " GS/s" << std::endl;
+    // int64_t elapsedTime = timer.elapsedMilli();
     
     
     
-    // Cleanup starts
+    
+    // // Statistics
+    
+    
+    // float finalAverage = Average(runAverages, totalRuns);
+    // float finalVariance = Variance(runAverages, finalAverage, totalRuns);
+    // std::cout << "Final average: " << finalAverage << std::endl;
+    // std::cout << "Final variance: " << finalVariance << std::endl;
+    // std::cout << "Final stdev: " << sqrt(finalVariance) << std::endl;
+    // std::cout << "Final stderr: " << sqrt(finalVariance / totalRuns) << std::endl;
+    // std::cout << "Actual Error: " << finalAverage - actualResult << std::endl;
+    
+    
+    // std::cout << "Elapsed time: " << elapsedTime / 1000.0 << "s" << std::endl;
+    // std::cout << "Samples/s: " << totalSamples / elapsedTime / 1e6 << " GS/s" << std::endl;
+    
+    
+    
+    // Cleanup
     
     cudaStreamDestroy(computeStream);
     cudaCheckError();
@@ -191,8 +212,6 @@ int main() {
     cudaFree(d_randState);
     cudaCheckError();
     cudaFree(d_prevSample);
-    cudaCheckError();
-    cudaFree(d_invPrevPDF);
     cudaCheckError();
     cudaFree(d_resultBuffer1);
     cudaCheckError();

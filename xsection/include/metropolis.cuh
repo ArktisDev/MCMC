@@ -21,48 +21,75 @@ __global__ void RandStateInit(curandStateXORWOW *randState, unsigned long long s
 }
 
 // Initialize the state of the metropolis algorithm using initSample
-template<float (* pdf)(float)>
-__global__ void MetropolisInit(float* prevSample, float* invPrevPDF, int initSample) {
+__global__ void InitSampleArray(float* prevSample, int initSample, int nNucleons, int totalThreads) {
    int threadId = threadIdx.x + blockIdx.x * blockDim.x;
    
-   prevSample[threadId] = initSample;
-   invPrevPDF[threadId] = 1.0f / pdf(initSample);
+   for (int n = 0; n < nNucleons; n++) {
+	  prevSample[totalThreads * n + threadId] = initSample;
+   }
 }
 
 // Given the previous sample and saved previous sample PDF, use MH algorithm and
 // random state to generate next sample in MH chain.
 template<float (* pdf)(float)>
-__device__ void MetropolisHastingsStep(float* prevSample, float* invPrevPDF, float stepSize, curandStateXORWOW* randState) {
+__device__ __forceinline__ void MetropolisHastingsStep(float* prevSample, float* invPrevPDF, float stepSize, curandStateXORWOW* randState) {
    // generate next potential sample
    float nextSample = *prevSample + stepSize * curand_normal(randState);
    float nextPDF = pdf(nextSample);
    
    // acceptance condition for the new sample
    if (nextPDF * (*invPrevPDF) >= curand_uniform(randState)) {
-      *prevSample = nextSample;
-      *invPrevPDF = 1 / nextPDF;
+	  *prevSample = nextSample;
+	  *invPrevPDF = 1 / nextPDF;
    }
 }
 
+// n is NOT nNucleons
+template<int totalThreads, int n, PDF pdf>
+__device__ void WarmupCopy(int threadId, float *prevSample, float* localPrevSample, float* localInvPrevPDF) {
+	localPrevSample[n] = prevSample[totalThreads * n + threadId];
+	localInvPrevPDF[n] = 1.f / pdf(localPrevSample[n]);
+}
+
+template<int totalThreads, int n, PDF pdf, PDF... pdfs>
+__device__ void WarmupCopy(int threadId, float *prevSample, float* localPrevSample, float* localInvPrevPDF) {
+  localPrevSample[n] = prevSample[totalThreads * n + threadId];
+  localInvPrevPDF[n] = 1.f / pdf(localPrevSample[n]);
+  WarmupCopy<totalThreads, n + 1, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
+}
+
+template<int n, PDF pdf>
+__device__ void WarmupGibbs(float* localPrevSample, float* localInvPrevPDF, float stepsize, curandStateXORWOW* localRandState) {
+  MetropolisHastingsStep<pdf>(&(localPrevSample[n]), &(localInvPrevPDF[n]), stepsize, localRandState);
+}
+
+template<int n, PDF pdf, PDF... pdfs>
+__device__ void WarmupGibbs(float* localPrevSample, float* localInvPrevPDF, float stepsize, curandStateXORWOW* localRandState) {
+  MetropolisHastingsStep<pdf>(&(localPrevSample[n]), &(localInvPrevPDF[n]), stepsize, localRandState);
+  WarmupGibbs<n + 1, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, localRandState);
+}
+
 // Using previous definitions, run the MH chain for some number of iterations to warm up and reach "steady state"
-template<float (* pdf)(float)>
-__global__ void WarmupMetropolis(float * prevSample, float* invPrevPDF, float stepsize, curandStateXORWOW* randState, int iterations) {
-   int threadId = threadIdx.x + blockIdx.x * blockDim.x;
-   
-   // make local copies of important variables to eliminate global memory usage
-   curandStateXORWOW localRandState = randState[threadId];
-   float localPrevSample = prevSample[threadId];
-   float localInvPrevPDF = invPrevPDF[threadId];
-   
-   for (int i = 0; i < iterations; i++) {
-      // do an M-H iteration
-      MetropolisHastingsStep<pdf>(&localPrevSample, &localInvPrevPDF, 1, &localRandState);
-   }
-   
-   // store back results
-   randState[threadId] = localRandState;
-   prevSample[threadId] = localPrevSample;
-   invPrevPDF[threadId] = localInvPrevPDF;
+template<int nNucleons, int totalThreads, PDF... pdf>
+__global__ void WarmupMetropolis(float *prevSample, float stepsize, curandStateXORWOW* randState, int iterations) {
+   // static assert here that length of pdf matches nNucleons
+  int threadId = threadIdx.x + blockIdx.x * blockDim.x;
+
+  curandStateXORWOW localRandState = randState[threadId];
+  float localPrevSample[nNucleons];
+  float localInvPrevPDF[nNucleons];
+
+  WarmupCopy<totalThreads, 0, pdf...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
+
+  for (int i = 0; i < iterations; ++i) {
+	WarmupGibbs<0, pdf...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
+  }
+
+  randState[threadId] = localRandState;
+  #pragma unroll nNucleons
+  for (int n = 0; n < nNucleons; n++) {
+	prevSample[totalThreads * n + threadId] = localPrevSample[n];
+  }
 }
 
 #endif // METROPOLIS_H
