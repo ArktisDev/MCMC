@@ -1,7 +1,7 @@
 #ifndef TIMING_H
 #define TIMING_H
 
-#include "common.cuh"
+#include "Common.cuh"
 
 #include <chrono>
 

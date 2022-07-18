@@ -1,7 +1,7 @@
 #ifndef STATISTICS_H
 #define STATISTICS_H
 
-#include "common.cuh"
+#include "Common.cuh"
 
 // Use Kahan summation to take sum of all the numbers in array `samples`
 float Sum(float *samples, int n) {

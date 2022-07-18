@@ -1,14 +1,14 @@
-#include "common.cuh"
-#include "statistics.cuh"
-#include "timing.hpp"
-#include "EnumerateArray.hpp"
-#include "metropolis.cuh"
-#include "integrate.cuh"
+#include "Common.cuh"
+#include "Statistics.cuh"
+#include "Timing.hpp"
+#include "Metropolis.cuh"
+#include "Integrate.cuh"
+#include "Distributions.cuh"
 
 #include <iostream>
 
 // This define for expanding the pdflist in variadic template
-#define pdflist pdf
+#define pdflist pdf, pdf
 // In the future it might be useful to include a dummy header for compiling
 // where the content of the dummy header is just the define for pdflist.
 // That way, an external script can modify the dummy header for the specific
@@ -17,21 +17,21 @@
 // difficult and easy to mess up. 
 
 int main() {
-    const int nNeutronA = 6;
-    const int nProtonA = 6;
-    const int nNeutronB = 6;
-    const int nProtonB = 6;
+    const int nNeutronA = 1;
+    const int nProtonA = 0;
+    const int nNeutronB = 1;
+    const int nProtonB = 0;
     
-    const int nNucleonA = nNeutronA + nProtonA;
-    const int nNucleonB = nNeutronB + nProtonB;
-    const int nNucleons = nNucleonA + nNucleonB;
+    const int nNucleonsA = nNeutronA + nProtonA;
+    const int nNucleonsB = nNeutronB + nProtonB;
+    const int nNucleons = nNucleonsA + nNucleonsB;
     
     // For 1 simulation kernel
     const int totalBlocks = 1 << 12; // 4096
     const int threadsPerBlock = 1 << 7;    // 128, don't go below this per block (empirical)
     const int samplesPerThread = 1 << 10; // don't go below 1<<9 really (empirical)
     
-    const int totalRuns = 1 << 6;  // number of times to iterate the simulation kernel
+    const int totalRuns = 1 << 4;  // number of times to iterate the simulation kernel
     
     const int samplesForMix = 1 << 14; // number of times to iterate MH kernel for mixing
     
@@ -47,9 +47,7 @@ int main() {
     
     
     // If you know the actual result for comparison
-    //const float actualResult = 6.424247445544025f;
-    //const float actualResult = 2.3317236182528682f;
-    const float actualResult = 20.35336559958019f;
+    const float actualResult = 1;
     
     const int64_t totalThreads = totalBlocks * threadsPerBlock;
     const int64_t samplesPerRun = samplesPerThread * totalThreads;
@@ -143,65 +141,68 @@ int main() {
     // Setup done, now run the integration
     timer.start();
     
-    // // Launch the first run
-    // MCIntegrate<<<blocks, threads, 0, computeStream>>>(d_prevSample, d_invPrevPDF, d_randState, d_resultBuffer1, samplesPerThread);
-    // cudaCheckError();
-    // cudaEventRecord(batches[0], computeStream);
-    // cudaCheckError();
+    float impactParameter = 0;
     
-    // for (int run = 1; run < totalRuns; run++) {
-    //     // Launch a new run
-    //     MCIntegrate<<<blocks, threads, 0, computeStream>>>(d_prevSample, d_invPrevPDF, d_randState, d_resultBuffers[run % 2], samplesPerThread);
-    //     cudaCheckError();
-    //     cudaEventRecord(batches[run % 2], computeStream);
-    //     cudaCheckError();
+    // Launch the first run
+    MCIntegrate_S_AB<nNucleonsA, nNucleonsB, totalThreads, pdflist><<<blocks, threads, 0, computeStream>>>(d_prevSample, 2.2, d_randState, d_resultBuffer1, samplesPerThread, impactParameter);
+    cudaCheckError();
+    cudaEventRecord(batches[0], computeStream);
+    cudaCheckError();
+    
+    for (int run = 1; run < totalRuns; run++) {
+        // Launch a new run
+        MCIntegrate_S_AB<nNucleonsA, nNucleonsB, totalThreads, pdflist><<<blocks, threads, 0, computeStream>>>(d_prevSample, 2.2, d_randState, d_resultBuffers[run % 2], samplesPerThread, impactParameter);
+        cudaCheckError();
+        cudaEventRecord(batches[run % 2], computeStream);
+        cudaCheckError();
         
-    //     // Wait on previous kernel to finish
-    //     cudaEventSynchronize(batches[(run + 1) % 2]);
-    //     cudaCheckError();
+        // Wait on previous kernel to finish
+        cudaEventSynchronize(batches[(run + 1) % 2]);
+        cudaCheckError();
         
-    //     // Process data from that event
-    //     cudaMemcpyAsync(h_resultBuffers[(run - 1) % 2], d_resultBuffers[(run - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
-    //     cudaCheckError();
-    //     cudaStreamSynchronize(dataStream);
-    //     cudaCheckError();
+        // Process data from that event
+        cudaMemcpyAsync(h_resultBuffers[(run - 1) % 2], d_resultBuffers[(run - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
+        cudaCheckError();
+        cudaStreamSynchronize(dataStream);
+        cudaCheckError();
         
-    //     runAverages[run - 1] = Average(h_resultBuffers[(run - 1) % 2], totalThreads);
+        runAverages[run - 1] = Average(h_resultBuffers[(run - 1) % 2], totalThreads);
         
-    //     // when done processing, just let loop again and enqueue another kernel, or let exit because we've enqueued enough kernels
-    // }
+        // when done processing, just let loop again and enqueue another kernel, or let exit because we've enqueued enough kernels
+    }
     
-    // // when exiting the loop, there is still one running kernel, with id run = totalRuns - 1.
-    // cudaEventSynchronize(batches[(totalRuns - 1) % 2]);
-    // cudaCheckError();
+    // when exiting the loop, there is still one running kernel, with id run = totalRuns - 1.
+    cudaEventSynchronize(batches[(totalRuns - 1) % 2]);
+    cudaCheckError();
     
-    // // process the data from that event
-    // cudaMemcpyAsync(h_resultBuffers[(totalRuns - 1) % 2], d_resultBuffers[(totalRuns - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
-    // cudaCheckError();
-    // cudaStreamSynchronize(dataStream);
-    // cudaCheckError();
+    // process the data from that event
+    cudaMemcpyAsync(h_resultBuffers[(totalRuns - 1) % 2], d_resultBuffers[(totalRuns - 1) % 2], totalThreads * sizeof(float), cudaMemcpyDeviceToHost, dataStream);
+    cudaCheckError();
+    cudaStreamSynchronize(dataStream);
+    cudaCheckError();
     
-    // runAverages[totalRuns - 1] = Average(h_resultBuffers[(totalRuns - 1) % 2], totalThreads);
+    runAverages[totalRuns - 1] = Average(h_resultBuffers[(totalRuns - 1) % 2], totalThreads);
     
-    // int64_t elapsedTime = timer.elapsedMilli();
-    
-    
+    int64_t elapsedTime = timer.elapsedMilli();
     
     
-    // // Statistics
     
     
-    // float finalAverage = Average(runAverages, totalRuns);
-    // float finalVariance = Variance(runAverages, finalAverage, totalRuns);
-    // std::cout << "Final average: " << finalAverage << std::endl;
-    // std::cout << "Final variance: " << finalVariance << std::endl;
-    // std::cout << "Final stdev: " << sqrt(finalVariance) << std::endl;
-    // std::cout << "Final stderr: " << sqrt(finalVariance / totalRuns) << std::endl;
-    // std::cout << "Actual Error: " << finalAverage - actualResult << std::endl;
+    // Statistics
     
     
-    // std::cout << "Elapsed time: " << elapsedTime / 1000.0 << "s" << std::endl;
-    // std::cout << "Samples/s: " << totalSamples / elapsedTime / 1e6 << " GS/s" << std::endl;
+    float finalAverage = Average(runAverages, totalRuns);
+    float finalVariance = Variance(runAverages, finalAverage, totalRuns);
+    std::cout << "Final average: " << finalAverage << std::endl;
+    std::cout << "Final variance: " << finalVariance << std::endl;
+    std::cout << "Final stdev: " << sqrt(finalVariance) << std::endl;
+    std::cout << "Final stderr: " << sqrt(finalVariance / totalRuns) << std::endl;
+    std::cout << "Actual Error: " << finalAverage - actualResult << std::endl;
+    
+    
+    std::cout << "Elapsed time: " << elapsedTime / 1000.0 << "s" << std::endl;
+    std::cout << "Integral Samples/s: " << totalSamples / elapsedTime / 1e6 << " GS/s" << std::endl;
+    std::cout << "Radial Samples/s: " << nNucleons * totalSamples / elapsedTime / 1e6 << " GS/s" << std::endl;
     
     
     

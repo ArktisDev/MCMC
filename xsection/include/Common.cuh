@@ -13,7 +13,12 @@
 
 #include <stdio.h>
 
+// Typedef for probability density function pointer
 typedef float (*PDF)(float);
+
+// Constant
+
+const float PI = 3.141592653589f;
 
 #define cudaCheckError() { \
   cudaError_t err = cudaGetLastError(); \

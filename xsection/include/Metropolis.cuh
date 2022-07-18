@@ -4,10 +4,10 @@
 
 #include <tuple>
 
-#include "common.cuh"
+#include "Common.cuh"
 
 // Initialize the random state of the curandStateXORWOW variable using a seed
-__global__ void RandStateInit(curandStateXORWOW *randState, unsigned long long seed)
+__global__ void RandStateInit(curandStateXORWOW* __restrict__ randState, unsigned long long seed)
 {
 	int threadId = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -24,7 +24,7 @@ __global__ void RandStateInit(curandStateXORWOW *randState, unsigned long long s
 }
 
 // Initialize the state of the metropolis algorithm using initSample
-__global__ void InitSampleArray(float *prevSample, int initSample, int nNucleons, int totalThreads)
+__global__ void InitSampleArray(float* __restrict__ prevSample, int initSample, int nNucleons, int totalThreads)
 {
 	int threadId = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -37,7 +37,7 @@ __global__ void InitSampleArray(float *prevSample, int initSample, int nNucleons
 // Given the previous sample and saved previous sample PDF, use MH algorithm and
 // random state to generate next sample in MH chain.
 template <float (*pdf)(float)>
-__device__ __forceinline__ void MetropolisHastingsStep(float *prevSample, float *invPrevPDF, float stepSize, curandStateXORWOW *randState)
+__device__ __forceinline__ void MetropolisHastingsStep(float* __restrict__ prevSample , float* __restrict__ invPrevPDF, float stepSize, curandStateXORWOW* __restrict__ randState)
 {
 	// generate next potential sample
 	float nextSample = *prevSample + stepSize * curand_normal(randState);
@@ -53,37 +53,37 @@ __device__ __forceinline__ void MetropolisHastingsStep(float *prevSample, float 
 
 // n is NOT nNucleons
 template <int totalThreads, int n, PDF pdf>
-__device__ __forceinline__ void WarmupCopy(int threadId, float *prevSample, float *localPrevSample, float *localInvPrevPDF)
+__device__ __forceinline__ void CopyLocalMHVars(int threadId, float* __restrict__ prevSample, float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF)
 {
 	localPrevSample[n] = prevSample[totalThreads * n + threadId];
 	localInvPrevPDF[n] = 1.f / pdf(localPrevSample[n]);
 }
 
 template <int totalThreads, int n, PDF pdf, PDF... pdfs>
-__device__ __forceinline__ void WarmupCopy(int threadId, float *prevSample, float *localPrevSample, float *localInvPrevPDF)
+__device__ __forceinline__ void CopyLocalMHVars(int threadId, float* __restrict__ prevSample, float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF)
 {
 	localPrevSample[n] = prevSample[totalThreads * n + threadId];
 	localInvPrevPDF[n] = 1.f / pdf(localPrevSample[n]);
-	WarmupCopy<totalThreads, n + 1, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
+	CopyLocalMHVars<totalThreads, n + 1, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
 }
 
 template <int n, PDF pdf>
-__device__ __forceinline__ void WarmupGibbs(float *localPrevSample, float *localInvPrevPDF, float stepsize, curandStateXORWOW *localRandState)
+__device__ __forceinline__ void GibbsStep(float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF, float stepsize, curandStateXORWOW* __restrict__ localRandState)
 {
 	MetropolisHastingsStep<pdf>(&(localPrevSample[n]), &(localInvPrevPDF[n]), stepsize, localRandState);
 }
 
 template <int n, PDF pdf, PDF... pdfs>
-__device__ __forceinline__ void WarmupGibbs(float *localPrevSample, float *localInvPrevPDF, float stepsize, curandStateXORWOW *localRandState)
+__device__ __forceinline__ void GibbsStep(float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF, float stepsize, curandStateXORWOW* __restrict__ localRandState)
 {
 	MetropolisHastingsStep<pdf>(&(localPrevSample[n]), &(localInvPrevPDF[n]), stepsize, localRandState);
-	WarmupGibbs<n + 1, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, localRandState);
+	GibbsStep<n + 1, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, localRandState);
 }
 
 // Using previous definitions, run the MH chain for some number of iterations to warm up and reach "steady state"
 // This template is for each nucleon with a unique distribution
 template <int nNucleons, int totalThreads, PDF... pdfs>
-__global__ void WarmupMetropolis(float *prevSample, float stepsize, curandStateXORWOW *randState, int iterations)
+__global__ void WarmupMetropolis(float* __restrict__ prevSample, float stepsize, curandStateXORWOW* __restrict__ randState, int iterations)
 {
 	if constexpr (sizeof...(pdfs) == 1)
 	{
@@ -139,11 +139,11 @@ __global__ void WarmupMetropolis(float *prevSample, float stepsize, curandStateX
 		float localPrevSample[nNucleons];
 		float localInvPrevPDF[nNucleons];
 
-		WarmupCopy<totalThreads, 0, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
+		CopyLocalMHVars<totalThreads, 0, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
 
 		for (int i = 0; i < iterations; ++i)
 		{
-			WarmupGibbs<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
+			GibbsStep<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
 		}
 
 		randState[threadId] = localRandState;
