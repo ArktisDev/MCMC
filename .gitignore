@@ -3,3 +3,6 @@
 
 # Data dirs
 **/data
+
+# Ipynh
+**/.ipynb_checkpoints

@@ -6,14 +6,20 @@
 
 #include <tuple>
 
-__device__ __host__ float GammaNN(float r) {
-    float beta = 5.f;
-    float sigmaNN = 0.043f; // in barns
-    return sigmaNN / (4 * PI * beta) * expf(- (r * r) / (2.f * beta));
+// r in fm^2
+__device__ __host__ float GammaNNR2(float r) {
+    const float beta = 0.2f; // in fm^2
+    const float sigmaNN = 4.3f; // in fm^2 = 10 * mbarns
+    return sigmaNN / (4 * PI * beta) * expf(- r / (2.f * beta));
 }
 
-__device__ __host__ float GammaNN(float x, float y) {
-    return GammaNN(x * x + y * y);
+__device__ __host__ float GammaNN(float r) {
+    return GammaNNR2(r * r);
+}
+
+
+__device__ __host__ float GammaNN(float dx, float dy) {
+    return GammaNNR2(dx * dx + dy * dy);
 }
 
 template <int nNucleonsA, int nNucleonsB, int totalThreads, PDF... pdfs>
@@ -86,7 +92,7 @@ __global__ void MCIntegrate_S_AB(float *prevSample, float stepsize, curandStateX
         float sum = 0.0f;
         float err = 0.0f;
         
-        // use Kahan Summation to reduce (mostly eliminate error)
+        // use Kahan Summation to reduce (mostly eliminate) error
         for (int s = 0; s < samples; s++)
         {
             GibbsStep<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
