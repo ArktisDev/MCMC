@@ -51,14 +51,12 @@ __device__ __forceinline__ void MetropolisHastingsStep(float* __restrict__ prevS
 	}
 }
 
-// n is NOT nNucleons
-template <int totalThreads, int n, PDF pdf>
+// Base case for specialization
+template <int totalThreads, int n, typename = void>
 __device__ __forceinline__ void CopyLocalMHVars(int threadId, float* __restrict__ prevSample, float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF)
-{
-	localPrevSample[n] = prevSample[totalThreads * n + threadId];
-	localInvPrevPDF[n] = 1.f / pdf(localPrevSample[n]);
-}
+{}
 
+// n is not nNucleons, it is position in array to index
 template <int totalThreads, int n, PDF pdf, PDF... pdfs>
 __device__ __forceinline__ void CopyLocalMHVars(int threadId, float* __restrict__ prevSample, float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF)
 {
@@ -67,12 +65,12 @@ __device__ __forceinline__ void CopyLocalMHVars(int threadId, float* __restrict_
 	CopyLocalMHVars<totalThreads, n + 1, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
 }
 
-template <int n, PDF pdf>
+// Base case for specialization
+template <int n, typename = void >
 __device__ __forceinline__ void GibbsStep(float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF, float stepsize, curandStateXORWOW* __restrict__ localRandState)
-{
-	MetropolisHastingsStep<pdf>(&(localPrevSample[n]), &(localInvPrevPDF[n]), stepsize, localRandState);
-}
+{}
 
+// n is not nNucleons, it is position in array to index
 template <int n, PDF pdf, PDF... pdfs>
 __device__ __forceinline__ void GibbsStep(float* __restrict__ localPrevSample, float* __restrict__ localInvPrevPDF, float stepsize, curandStateXORWOW* __restrict__ localRandState)
 {

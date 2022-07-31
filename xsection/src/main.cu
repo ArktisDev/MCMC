@@ -10,7 +10,8 @@
 #include <iostream>
 
 // This define for expanding the pdflist in variadic template
-#define pdflist pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf, pdf
+#define pdflist pdf, pdf
+//#define pdflist pdf
 // In the future it might be useful to include a dummy header for compiling
 // where the content of the dummy header is just the define for pdflist.
 // That way, an external script can modify the dummy header for the specific
@@ -18,16 +19,17 @@
 // have to mess around passing the defines via command line, which is somewhat
 // difficult and easy to mess up. 
 
+
 int main(int argc, char** argv) {
-    const int nNeutronA = 6;
-    const int nProtonA = 6;
-    const int nNeutronB = 6;
-    const int nProtonB = 6;
+    const int nNeutronA = 1;
+    const int nProtonA = 0;
+    const int nNeutronB = 1;
+    const int nProtonB = 0;
     
     // For 1 simulation kernel
     const int totalBlocks = 1 << 10; // 1024
     const int threadsPerBlock = 1 << 7;    // 128, don't go below this per block (empirical)
-    const int samplesPerThread = 1 << 8; // don't go below 1<<9 really (empirical)
+    const int samplesPerThread = 1 << 8; // don't go below 1<<9 really for MAX performance (empirical)
     
     const int totalRuns = 1 << 4;  // number of times to iterate the simulation kernel
     
@@ -35,9 +37,9 @@ int main(int argc, char** argv) {
     
     // Range of impact parameters to sample
     const float b0 = 0;
-    const float db = 0.25;
+    const float db = 0.01;
     // number of db's to step
-    const int ndbs = 40;
+    const int ndbs = 1000;
     
     // Output file
     std::string outDir = "../data/";

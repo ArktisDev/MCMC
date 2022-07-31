@@ -9,7 +9,7 @@
 // r in fm^2
 __device__ __host__ float GammaNNR2(float r) {
     const float beta = 0.2f; // in fm^2
-    const float sigmaNN = 4.3f; // in fm^2 = 10 * mbarns
+    const float sigmaNN = 4.3f; // in fm^2 = 10 * mb
     return sigmaNN / (4 * PI * beta) * expf(- r / (2.f * beta));
 }
 
@@ -25,9 +25,12 @@ __device__ __host__ float GammaNN(float dx, float dy) {
 template <int nNucleonsA, int nNucleonsB, int totalThreads, PDF... pdfs>
 __global__ void MCIntegrate_S_AB(float *prevSample, float stepsize, curandStateXORWOW *randState, float *resultBuffer, int samples, float impactParameter)
 {
-    const int nNucleons = nNucleonsA + nNucleonsB;
+    constexpr int nNucleons = nNucleonsA + nNucleonsB;
     if constexpr (sizeof...(pdfs) == 1)
     {
+        // Lol
+        static_assert(sizeof...(pdfs) != 1, "1 PDF case not implemented");
+        
         int threadId = threadIdx.x + blockIdx.x * blockDim.x;
 
         curandStateXORWOW localRandState = randState[threadId];
@@ -77,7 +80,7 @@ __global__ void MCIntegrate_S_AB(float *prevSample, float stepsize, curandStateX
 			prevSample[totalThreads * n + threadId] = localPrevSample[n];
 		}
     } else {
-        // Multiple PDF's given
+        // Multiple PDF's given so
 		// static assert here that length of pdf matches nNucleons
 		static_assert(nNucleons == sizeof...(pdfs), "Incorrect number of pdf's");
         
@@ -106,10 +109,10 @@ __global__ void MCIntegrate_S_AB(float *prevSample, float stepsize, curandStateX
                 u0[n] = curand_uniform(&localRandState);
                 u1[n] = curand_uniform(&localRandState);
                 
-                // no need to keep u0 since z-coordinate will be discarded anyways
+                // no need to keep u0 to calculate z-coordinate since z-coordinate will be discarded anyways
                 // now u0[n] is what to multiply radial coordinates by because of amount of position "in z direction"
-                u0[n] = 2 * u0[n] - 1;
-                u0[n] = sqrt(1 - u0[n] * u0[n]);
+                u0[n] = 1 - 2 * u0[n];
+                u0[n] = sqrtf(1 - u0[n] * u0[n]);
                 
                 // premultiply u1 by 2 for use in sinpif and cospif functions
                 u1[n] = 2 * u1[n]; 
