@@ -13,7 +13,7 @@
 
 #include <stdio.h>
 
-// Typedef for probability density function pointer
+// Typedef for 1-D probability density function pointer
 typedef float (*PDF)(float);
 
 // Constant

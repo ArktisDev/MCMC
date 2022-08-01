@@ -65,6 +65,10 @@
         "__tree": "cpp",
         "__tuple": "cpp",
         "filesystem": "cpp",
-        "__config": "cpp"
+        "__config": "cpp",
+        "__atomic_derived": "cpp",
+        "__atomic_generated": "cpp",
+        "__bit_reference": "cpp",
+        "__split_buffer": "cpp"
     }
 }

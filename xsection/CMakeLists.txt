@@ -8,8 +8,8 @@ enable_language(CUDA)
 #----------------------------------------------------------------------------
 # Set the appropriate compile options
 #
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CUDA_STANDARD 20)
 SET(CMAKE_CXX_FLAGS -Wall -O3)
 SET(CMAKE_CUDA_FLAGS "-O3 --expt-relaxed-constexpr")
 

@@ -83,74 +83,27 @@ __device__ __forceinline__ void GibbsStep(float* __restrict__ localPrevSample, f
 template <int nNucleons, int totalThreads, PDF... pdfs>
 __global__ void WarmupMetropolis(float* __restrict__ prevSample, float stepsize, curandStateXORWOW* __restrict__ randState, int iterations)
 {
-	if constexpr (sizeof...(pdfs) == 1)
+	// Static assert here that length of pdf matches nNucleons
+	static_assert(nNucleons == sizeof...(pdfs), "Incorrect number of pdf's to WarmupMetropolis");
+	int threadId = threadIdx.x + blockIdx.x * blockDim.x;
+
+	curandStateXORWOW localRandState = randState[threadId];
+	float localPrevSample[nNucleons];
+	float localInvPrevPDF[nNucleons];
+
+	CopyLocalMHVars<totalThreads, 0, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
+
+	for (int i = 0; i < iterations; ++i)
 	{
-		// Just 1 PDF given, use same for everything
-		int threadId = threadIdx.x + blockIdx.x * blockDim.x;
-		
-		curandStateXORWOW localRandState = randState[threadId];
-		float localPrevSample[nNucleons];
-		float localInvPrevPDF[nNucleons];
-		
-		// Just pull first PDF from pack which only contains 1 pdf.
-		// somewhat upsetting we can't just pdf = pdfs[0];
-		constexpr PDF pdf = std::get<0>(std::forward_as_tuple(pdfs...));
-		
-		// copy data into local copies
-		#pragma unroll nNucleons
-		for (int n = 0; n < nNucleons; n++)
-		{
-			localPrevSample[n] = prevSample[totalThreads * n + threadId];
-			localInvPrevPDF[n] = 1 / pdf(localPrevSample[n]);
-		}
-		
-		// Run M-H iterations
-		for (int i = 0; i < iterations; i++)
-		{
-			// Use gibbs sampling to update all variables
-			// In our case since P(a, b, ...) = P(a) * P(b) * ...
-			// each dimension can just be updated alone
-			
-			#pragma unroll nNucleons
-			for (int n = 0; n < nNucleons; n++)
-			{
-				MetropolisHastingsStep<pdf>(&(localPrevSample[n]), &(localInvPrevPDF[n]), stepsize, &localRandState);
-			}
-		}
-		
-		// store back results
-		randState[threadId] = localRandState;
-		#pragma unroll nNucleons
-		for (int n = 0; n < nNucleons; n++)
-		{
-			prevSample[totalThreads * n + threadId] = localPrevSample[n];
-		}
+		GibbsStep<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
 	}
-	else
+
+	randState[threadId] = localRandState;
+
+	#pragma unroll nNucleons
+	for (int n = 0; n < nNucleons; n++)
 	{
-		// Multiple PDF's given
-		// static assert here that length of pdf matches nNucleons
-		static_assert(nNucleons == sizeof...(pdfs), "Incorrect number of pdf's");
-		int threadId = threadIdx.x + blockIdx.x * blockDim.x;
-
-		curandStateXORWOW localRandState = randState[threadId];
-		float localPrevSample[nNucleons];
-		float localInvPrevPDF[nNucleons];
-
-		CopyLocalMHVars<totalThreads, 0, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
-
-		for (int i = 0; i < iterations; ++i)
-		{
-			GibbsStep<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
-		}
-
-		randState[threadId] = localRandState;
-
-		#pragma unroll nNucleons
-		for (int n = 0; n < nNucleons; n++)
-		{
-			prevSample[totalThreads * n + threadId] = localPrevSample[n];
-		}
+		prevSample[totalThreads * n + threadId] = localPrevSample[n];
 	}
 }
 

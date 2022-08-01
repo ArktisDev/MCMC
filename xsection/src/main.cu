@@ -6,25 +6,25 @@
 #include "Metropolis.cuh"
 #include "Integrate.cuh"
 #include "Distributions.cuh"
+#include "TemplateBuilder.cuh"
 
 #include <iostream>
 
-// This define for expanding the pdflist in variadic template
-#define pdflist pdf, pdf
-//#define pdflist pdf
-// In the future it might be useful to include a dummy header for compiling
-// where the content of the dummy header is just the define for pdflist.
-// That way, an external script can modify the dummy header for the specific
-// situation to be compiled, then run the compiler. This makes it so we don't
-// have to mess around passing the defines via command line, which is somewhat
-// difficult and easy to mess up. 
-
-
 int main(int argc, char** argv) {
     const int nNeutronA = 1;
-    const int nProtonA = 0;
+    const int nProtonA = 1;
     const int nNeutronB = 1;
-    const int nProtonB = 0;
+    const int nProtonB = 1;
+    
+    const int nNucleonsA = nNeutronA + nProtonA;
+    const int nNucleonsB = nNeutronB + nProtonB;
+    const int nNucleons = nNucleonsA + nNucleonsB;
+    
+    constexpr static PDF nucleusAPdf = pdf;
+    constexpr static PDF nucleusBPdf = pdf;
+    constexpr static auto pdfArrA = TemplateBuilder::ConstArray<nNucleonsA>(nucleusAPdf);
+    constexpr static auto pdfArrB = TemplateBuilder::ConstArray<nNucleonsB>(nucleusBPdf);
+    constexpr static auto pdfArr  = TemplateBuilder::ConcatArray(pdfArrA, pdfArrB);
     
     // For 1 simulation kernel
     const int totalBlocks = 1 << 10; // 1024
@@ -41,6 +41,10 @@ int main(int argc, char** argv) {
     // number of db's to step
     const int ndbs = 1000;
     
+    // seed for CUDA RNG
+    const uint64_t seed = std::chrono::steady_clock::now().time_since_epoch().count();
+    //const uint64_t seed = 8 * 2474033889142906;
+    
     // Output file
     std::string outDir = "../data/";
     std::string outFile = "S_AB.dat";
@@ -50,30 +54,27 @@ int main(int argc, char** argv) {
         outFile = argv[1];
     }
     
-    // seed for CUDA RNG
-    const uint64_t seed = std::chrono::steady_clock::now().time_since_epoch().count();
-    //const uint64_t seed = 8 * 2474033889142906;
     
     
     
     
-    
-    
-    const int nNucleonsA = nNeutronA + nProtonA;
-    const int nNucleonsB = nNeutronB + nProtonB;
-    const int nNucleons = nNucleonsA + nNucleonsB;
-    
+    // ===================================
+    // || User variables end here       ||
+    // ===================================
     const int64_t totalThreads = totalBlocks * threadsPerBlock;
     const int64_t samplesPerRun = samplesPerThread * totalThreads;
     const int64_t totalSamples = samplesPerRun * totalRuns;
+    
+    constexpr static auto SABIntegrationFunction = TemplateBuilder::Make_SAB_Integration_Function<nNucleonsA, nNucleonsB, totalThreads, pdfArr>::type;
+    constexpr static auto WarmupMetropolisFunction = TemplateBuilder::Make_WarmupMetropolis_Function<nNucleons, totalThreads, pdfArr>::type;
     
     // TODO: maybe log stuff like this in metadata in some file
     std::cout << "Total threads: " << totalThreads << std::endl;
     std::cout << "Samples per thread: " << samplesPerThread << std::endl;
     std::cout << "Total runs: " << totalRuns << std::endl;
     std::cout << "Samples per run: " << samplesPerRun << std::endl;
-    std::cout << "Total samples: " << totalSamples << std::endl;
-    std::cout << "Total samples log10():" << std::log10(totalSamples) << std::endl;
+    std::cout << "Total samples per b: " << totalSamples << std::endl;
+    std::cout << "Total samples per b log10():" << std::log10(totalSamples) << std::endl;
     
     dim3 blocks(totalBlocks);
     dim3 threads(threadsPerBlock);
@@ -146,7 +147,7 @@ int main(int argc, char** argv) {
     // we'd even randomize the initial states of the chain
     // This can be done by treating it as a discrete pdf, and sampling according to that (lars can do that btw lol)
     // Probably it isn't worth it though since we can just mix the chain "enough"
-    WarmupMetropolis<nNucleons, totalThreads, pdflist><<<blocks, threads>>>(d_prevSample, 2.2f, d_randState, samplesForMix);
+    WarmupMetropolisFunction<<<blocks, threads>>>(d_prevSample, 2.2f, d_randState, samplesForMix);
     cudaCheckError();
     cudaDeviceSynchronize();
     cudaCheckError();
@@ -180,7 +181,7 @@ int main(int argc, char** argv) {
         timer.start();
         
         // Launch the first run
-        MCIntegrate_S_AB<nNucleonsA, nNucleonsB, totalThreads, pdflist><<<blocks, threads, 0, computeStream>>>(d_prevSample, 2.2, d_randState, d_resultBuffer1, samplesPerThread, b);
+        SABIntegrationFunction<<<blocks, threads, 0, computeStream>>>(d_prevSample, 2.2, d_randState, d_resultBuffer1, samplesPerThread, b);
         cudaCheckError();
         cudaEventRecord(batches[0], computeStream);
         cudaCheckError();
@@ -189,7 +190,7 @@ int main(int argc, char** argv) {
             progressBar.IncrementProgress(1);
             progressBar.PrintBar();
             // Launch a new run
-            MCIntegrate_S_AB<nNucleonsA, nNucleonsB, totalThreads, pdflist><<<blocks, threads, 0, computeStream>>>(d_prevSample, 2.2, d_randState, d_resultBuffers[run % 2], samplesPerThread, b);
+            SABIntegrationFunction<<<blocks, threads, 0, computeStream>>>(d_prevSample, 2.2, d_randState, d_resultBuffers[run % 2], samplesPerThread, b);
             cudaCheckError();
             cudaEventRecord(batches[run % 2], computeStream);
             cudaCheckError();
