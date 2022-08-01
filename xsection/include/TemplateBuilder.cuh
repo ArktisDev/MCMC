@@ -27,8 +27,6 @@ namespace TemplateBuilder
 	struct Make_SAB_Integration_Function {
 		constexpr static auto type = Make_SAB_Integration_Function_Helper<nNucleonsA, nNucleonsB, totalThreads, a, std::make_index_sequence<a.size()>>::type;
 	};
-	
-    //int nNucleons, int totalThreads
     
     // Base template for when no args are given
 	// This has no definition so it won't compile
