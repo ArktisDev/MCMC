@@ -4,5 +4,5 @@
 # Data dirs
 **/data
 
-# Ipynh
-**/.ipynb_checkpoints
+# Ipynb
+**/.ipynb_checkpoints/*

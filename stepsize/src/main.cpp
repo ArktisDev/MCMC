@@ -5,7 +5,7 @@
 int main() {
     std::string outputDir = "../data/";
     
-    const int iterations = 100000;
+    const int iterations = 1000000;
     
     std::vector<std::vector<double>> statistics;
     
