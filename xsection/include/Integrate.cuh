@@ -11,11 +11,6 @@ __device__ __host__ float GammaNNR2(float r) {
     return sigmaNN / (4 * PI * beta) * expf(- r / (2.f * beta));
 }
 
-__device__ __host__ float GammaNN(float r) {
-    return GammaNNR2(r * r);
-}
-
-
 __device__ __host__ float GammaNN(float dx, float dy) {
     return GammaNNR2(dx * dx + dy * dy);
 }
@@ -44,6 +39,8 @@ __global__ void MCIntegrate_S_AB(float* __restrict__ prevSample, float stepsize,
     {
         GibbsStep<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
         
+        
+        // TODO: Store only values for nNucleonsB. nNucleonsA is independent and can be generated on the fly. This halves number of registers needed
         // For choosing theta, phi of nucleon
         // https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/2D_Sampling_with_Multidimensional_Transformations
         float u0[nNucleons];
@@ -88,6 +85,65 @@ __global__ void MCIntegrate_S_AB(float* __restrict__ prevSample, float stepsize,
     }
     
     resultBuffer[threadId] = (sum - err) / samples;
+
+    // store back results
+    randState[threadId] = localRandState;
+    #pragma unroll nNucleons
+    for (int n = 0; n < nNucleons; n++)
+    {
+        prevSample[totalThreads * n + threadId] = localPrevSample[n];
+    }
+}
+
+template <int nNucleonsA, int nNucleonsB, int totalThreads, PDF... pdfs>
+__global__ void MCIntegrate_R2(float* __restrict__ prevSample, float stepsize, curandStateXORWOW* __restrict__ randState, float* __restrict__ resultBuffer, int samples)
+{
+    const int nNucleons = nNucleonsA + nNucleonsB;
+
+    // Static assert here that length of pdfs matches nNucleons
+    static_assert(nNucleons == sizeof...(pdfs), "Incorrect number of pdf's to MCIntegrate_S_AB");
+    
+    int threadId = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    curandStateXORWOW localRandState = randState[threadId];
+    float localPrevSample[nNucleons];
+    float localInvPrevPDF[nNucleons];
+    
+    CopyLocalMHVars<totalThreads, 0, pdfs...>(threadId, prevSample, localPrevSample, localInvPrevPDF);
+    
+    float sum[nNucleons];
+    float err[nNucleons];
+
+    #pragma unroll nNucleons
+    for (int i = 0; i < nNucleons; i++) {
+        sum[i] = 0.0f;
+        err[i] = 0.0f;
+    }
+    
+    // use Kahan Summation to reduce (mostly eliminate) error
+    for (int s = 0; s < samples; s++)
+    {
+        GibbsStep<0, pdfs...>(localPrevSample, localInvPrevPDF, stepsize, &localRandState);
+        
+        #pragma unroll nNucleons
+        for (int n = 0; n < nNucleons; n++) {
+            // This is part of Kahan
+
+            float y = localPrevSample[n] * localPrevSample[n];
+
+            y -= err[n];
+            
+            float t = sum[n] + y;
+            err[n] = (t - sum[n]) - y;
+            sum[n] = t;
+        }
+    }
+
+    #pragma unroll nNucleons
+    for (int n = 0; n < nNucleons; n++) {
+        resultBuffer[totalThreads * n + threadID] = (sum[n] - err[n]) / samples;
+
+    }
 
     // store back results
     randState[threadId] = localRandState;
