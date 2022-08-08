@@ -29,7 +29,6 @@ add_executable(main ${PROJECT_SOURCE_DIR}/src/main.cu ${cxxsources} ${cxxheaders
 # If you want to compile for specific architectures change the below line
 set_target_properties(main PROPERTIES CUDA_ARCHITECTURES OFF)
 set_target_properties(main PROPERTIES RUNTIME_OUTPUT_DIRECTORY ".")
-set_target_properties(main PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(main PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 install(TARGETS)

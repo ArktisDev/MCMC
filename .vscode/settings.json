@@ -70,6 +70,14 @@
         "__atomic_generated": "cpp",
         "__bit_reference": "cpp",
         "__split_buffer": "cpp",
-        "__functional_03": "cpp"
+        "__functional_03": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "shared_mutex": "cpp",
+        "stop_token": "cpp",
+        "cfenv": "cpp",
+        "locale": "cpp"
     }
 }
