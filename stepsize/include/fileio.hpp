@@ -19,7 +19,14 @@ void WriteSamplesToFile(std::vector<double> samples, std::string outputDir, std:
 void WriteStatisticsToFile(std::vector<std::vector<double>> statistics, std::string outputDir, std::string fileName) {
     std::ofstream ofs(outputDir + fileName);
     
-    ofs << "# Stepsize Acceptance Autocorrelation\n";
+    ofs << "# Stepsize Acceptance";
+
+    // For each autocorrelation, add another header
+    for (int i = 2; i < statistics[0].size(); i++) {
+        ofs << " k=" << (i - 1);
+    }
+
+    ofs << "\n";
     
     for (int i = 0; i < statistics.size(); i++) {
         std::vector<double> row = statistics[i];
