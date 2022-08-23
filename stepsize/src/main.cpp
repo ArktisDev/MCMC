@@ -2,14 +2,18 @@
 #include "statistics.hpp"
 #include "fileio.hpp"
 
+#include <iostream>
+
 int main() {
     std::string outputDir = "../data/";
     
-    const int iterations = 10000;
+    const int iterations = 1000000;
     
     std::vector<std::vector<double>> statistics;
     
     for(int stepSize = 1; stepSize <= 500; stepSize++) {
+        if (stepSize % 10 == 0) std::cout << stepSize << std::endl;
+
         auto res = MetropolisHastingsAlgorithm(iterations, stepSize / 100.);
         double acceptanceRatio = res.first;
         std::vector<double> samples = res.second;

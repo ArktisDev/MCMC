@@ -17,11 +17,12 @@ double R2Gaussian(double r, double variance) {
 }
 
 double PDF(double r) {
-    //double c = 2.0;
-    //double a = 0.54;
-    double variance = 1;
-    
-    return R2Gaussian(r, variance);
+    double c = 2.0;
+    double a = 0.54;
+    return R2WoodsSaxon(r, c, a);
+
+    //double variance = 1;
+    //return R2Gaussian(r, variance);
 }
 
 std::pair<double, std::vector<double>> MetropolisHastingsAlgorithm(int iterations, double stepSize) {
