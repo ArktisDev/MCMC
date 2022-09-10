@@ -18,7 +18,23 @@ __device__ __host__ float pdf(float r) {
     return R2WoodsSaxon(r, c, a);
 }
 
+// This ifdef block is for extracting the new generated PDF's out of the macro file
+#ifdef USE_MACRO_FILE
+    // Yes this is intentional, and no I don't think it looks pretty.
+    // It just gives a very simple way to replace all the code with 
+    // a python generated macro. -lars
+    #define EXTRACT_MACRO_FUNCTIONS
+    #include MACRO_FILE_PATH
+    #undef EXTRACT_MACRO_FUNCTIONS
+#endif
+
 int main(int argc, char** argv) {
+
+// This ifdef block is for extracting the code body from the generated macro file
+#ifdef USE_MACRO_FILE
+    std::cout << "Using macro file: " << MACRO_FILE_PATH << std::endl;
+    #include MACRO_FILE_PATH
+#else
     const int nNeutronA = 2;
     const int nProtonA = 2;
     const int nNeutronB = 2;
@@ -64,6 +80,7 @@ int main(int argc, char** argv) {
 
     const bool integrateRMS = true;
     const bool integrateSAB = false;
+#endif
 
     // ===================================
     // || User variables end here       ||

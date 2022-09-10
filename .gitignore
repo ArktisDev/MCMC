@@ -4,6 +4,9 @@
 # Data dirs
 **/data
 
+# Macro directory
+**/macrofiles
+
 # Ipynb
 **/.ipynb_checkpoints/*
 **/.ipynb_checkpoints

@@ -13,6 +13,22 @@ set(CMAKE_CUDA_STANDARD 20)
 SET(CMAKE_CXX_FLAGS -Wall -O3)
 SET(CMAKE_CUDA_FLAGS "-O3 --expt-relaxed-constexpr")
 
+#
+# To be able to specify a certain macro file to include in the 
+# hacky way I am including them
+#
+
+# Usage: -DUSE_MACRO_FILE="ON"
+IF(USE_MACRO_FILE STREQUAL "ON")
+    ADD_DEFINITIONS(-DUSE_MACRO_FILE)
+ENDIF()
+
+# Usage: -DMACRO_FILE_PATH=\"path\"
+IF (NOT DEFINED MACRO_FILE_PATH)
+    SET(MACRO_FILE_PATH \"/NO_INPUT_FILE\")
+ENDIF()
+ADD_DEFINITIONS(-DMACRO_FILE_PATH=${MACRO_FILE_PATH})
+
 #----------------------------------------------------------------------------
 # Locate sources and headers for this project
 # NB: headers are included so they will show up in IDEs
