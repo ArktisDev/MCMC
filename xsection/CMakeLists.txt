@@ -5,13 +5,16 @@ project(MCMC)
 
 enable_language(CUDA)
 
+# Find ROOT and include it
+find_package(ROOT)
+
 #----------------------------------------------------------------------------
 # Set the appropriate compile options
 #
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CUDA_STANDARD 20)
 SET(CMAKE_CXX_FLAGS -Wall -O3)
-SET(CMAKE_CUDA_FLAGS "-O3 --expt-relaxed-constexpr")
+SET(CMAKE_CUDA_FLAGS "-O3 --expt-relaxed-constexpr -Wno-attributes")
 
 #
 # To be able to specify a certain macro file to include in the 
@@ -33,14 +36,19 @@ ADD_DEFINITIONS(-DMACRO_FILE_PATH=${MACRO_FILE_PATH})
 # Locate sources and headers for this project
 # NB: headers are included so they will show up in IDEs
 #
+
+# Add ROOT headers
+include_directories(${ROOT_INCLUDE_DIRS})
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(GLOB cxxsources ${PROJECT_SOURCE_DIR}/src/*.cpp)
-file(GLOB cxxheaders ${PROJECT_SOURCE_DIR}/include/*.hpp)
 file(GLOB cusources ${PROJECT_SOURCE_DIR}/src/*.cu)
-file(GLOB cuheaders ${PROJECT_SOURCE_DIR}/include/*.cuh)
 
 # Add executable and make it be put in build dir
-add_executable(main ${PROJECT_SOURCE_DIR}/src/main.cu ${cxxsources} ${cxxheaders} ${cusources} ${cuheaders})
+add_executable(main ${PROJECT_SOURCE_DIR}/src/main.cu ${cxxsources} ${cusources})
+
+# Link ROOT
+target_link_libraries(main ${ROOT_LIBRARIES})
 
 # If you want to compile for specific architectures change the below line
 set_target_properties(main PROPERTIES CUDA_ARCHITECTURES OFF)

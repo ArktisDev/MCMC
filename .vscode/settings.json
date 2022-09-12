@@ -78,6 +78,10 @@
         "shared_mutex": "cpp",
         "stop_token": "cpp",
         "cfenv": "cpp",
-        "locale": "cpp"
+        "locale": "cpp",
+        "allocator": "cpp",
+        "unordered_set": "cpp",
+        "span": "cpp",
+        "cinttypes": "cpp"
     }
 }

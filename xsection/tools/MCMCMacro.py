@@ -397,6 +397,6 @@ class IntegrationSettings:
         pass
     
     def Run(self) -> None:
-        exe = self.macroOutDir + self.macroOutFile + '.build/main'
+        exe = self.macroOutDir + self.macroName + '/' + self.macroName + '.build/main'
         os.system(exe)
         pass

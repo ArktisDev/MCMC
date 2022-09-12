@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
     constexpr static auto pdfArr  = TemplateBuilder::ConcatArray(pdfArrA, pdfArrB);
     
     // For 1 simulation kernel
-    const int totalBlocks = 1 << 10; // 1024
+    const int totalBlocks = 1 << 8; // 1024
     const int threadsPerBlock = 1 << 7;    // 128, don't go below this per block (empirical)
     const int samplesPerThread = 1 << 8; // don't go below 1<<9 really for MAX performance (empirical)
     
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
     
     // Output file
     std::string outDir = "../data/";
-    std::string outFile = "S_AB.dat";
+    std::string outFile = "out.root";
     
     // If an arg is supplied, set that to be the output file
     if (argc == 2) {
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     }
 
     const bool integrateRMS = true;
-    const bool integrateSAB = false;
+    const bool integrateSAB = true;
 #endif
 
     // ===================================
@@ -133,6 +133,9 @@ int main(int argc, char** argv) {
     cudaCheckError();
     cudaDeviceSynchronize();
     cudaCheckError();
+    
+    // Output handler
+    ROOTOutputHandler outputHandler(nNucleonsA, nNucleonsB, outDir, outFile);
 
     // Warmup markov chain
     
@@ -152,6 +155,7 @@ int main(int argc, char** argv) {
 
     // RMS Integration
     if constexpr (integrateRMS) {
+        outputHandler.SetWriteRMSResults(true);
         float *d_resultBuffer1;
         float *d_resultBuffer2;
         float *h_resultBuffer1;
@@ -255,6 +259,8 @@ int main(int argc, char** argv) {
 
         std::cout << "RMS results" << std::endl;
         for (int n = 0; n < nNucleons; n++) {
+            std::vector<float> result = {finalRMSAverage[n], finalRMSStderr[n]};
+            outputHandler.AddRMSResult(result);
             std::cout << "Nucleon " << n << " has RMS = " << finalRMSAverage[n] << " +/- " << finalRMSStderr[n] << std::endl;
         }
 
@@ -281,6 +287,7 @@ int main(int argc, char** argv) {
 
     // S_AB Integration
     if constexpr (integrateSAB) {
+        outputHandler.SetWriteS_ABResults(true);
         float *d_resultBuffer1;
         float *d_resultBuffer2;
         float *h_resultBuffer1;
@@ -310,9 +317,6 @@ int main(int argc, char** argv) {
         }
         
         float runAverages[totalRuns];
-        
-        std::vector<std::string> headers = {"ImpactParameter", "S_AB", "Stderr(S_AB)"};
-        IntegrationOutputHandler handler(headers.size(), headers, outDir, outFile);
         
         ProgressBar progressBar(ndbs * totalRuns);
         
@@ -381,13 +385,11 @@ int main(int argc, char** argv) {
             float finalVariance = Variance(runAverages, finalAverage, totalRuns);
             float finalStderr = sqrt(finalVariance / totalRuns);
             
-            std::vector<float> results = {b, finalAverage, finalStderr};
-            handler.AddRow(results);
+            std::vector<float> result = {b, finalAverage, finalStderr};
+            outputHandler.AddS_ABResult(result);
         }
         
         progressBar.FinishBar();
-        
-        handler.WriteToFile();
 
         // Cleanup
         
@@ -409,6 +411,9 @@ int main(int argc, char** argv) {
         free(h_resultBuffer1);
         free(h_resultBuffer2);
     } // End S_AB Integration
+    
+    // Write output file
+    outputHandler.WriteToFile();
     
     // Cleanup metropolis variables
     cudaFree(d_randState);
